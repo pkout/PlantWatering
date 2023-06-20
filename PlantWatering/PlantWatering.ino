@@ -5,16 +5,14 @@
 const char *SSID = "pela";
 const char *PASSWORD = "rockbed50";
 const char *URL = "http://jarvis.petrkout.com:4000/plants";
-const int UNITS_COUNT = 4;
-const int LOOP_DELAY_MS = 1000;
-const int STATUS_CHECK_PERIOD_MS = 5000;
+const char *URL_LOG = "http://jarvis.petrkout.com:4000/plants/log";
+const int LOOP_DELAY_MS = 5000;
 WiFiClient client;
 HTTPClient http;
-int runningTimeMs;
-int unitOnDuration[UNITS_COUNT];
+int unitOnDuration;
 String responseBody;
-String onOff, duration;
-int durationMs;
+String unitNum, onOff, duration;
+int unitNumber, durationMs;
 
 void setupSerial() {
   Serial.begin(115200);
@@ -51,15 +49,31 @@ void setupWifi() {
   Serial.println(WiFi.localIP());
 }
 
-int makeHTTPRequest(String &responseBody) {
-  http.begin(client, URL);
-
+int makeHTTPGetRequest(const char *url, String &responseBody) {
+  http.begin(client, url);
   int httpResponseCode = http.GET();
 
   if (httpResponseCode > 0) {
     String payload = http.getString();
     responseBody = payload;
   }
+
+  http.end();
+
+  return httpResponseCode;
+}
+
+int makeHTTPPostRequest(const char *url, String body, String &responseBody) {
+  http.begin(client, url);
+  int httpResponseCode = http.POST(body);
+
+  if (httpResponseCode > 0) {
+    String payload = http.getString();
+    responseBody = payload;
+  }
+
+  Serial.println(url);
+  Serial.println(responseBody);
 
   http.end();
 
@@ -89,12 +103,16 @@ int parsePayloadSegment(const char *payload, String &segment, const uint8 index)
   return -1;
 }
 
-int getOnOff(const char *payload, String &onOff, uint8 unitIndex) {
-  return parsePayloadSegment(payload, onOff, unitIndex);
+int getUnitNum(const char *payload, String &unitNum) {
+  return parsePayloadSegment(payload, unitNum, 0);
 }
 
-int getDuration(const char *payload, String &duration, uint8 unitIndex) {
-  return parsePayloadSegment(payload, duration, unitIndex + 1);
+int getOnOff(const char *payload, String &onOff) {
+  return parsePayloadSegment(payload, onOff, 1);
+}
+
+int getDuration(const char *payload, String &duration) {
+  return parsePayloadSegment(payload, duration, 2);
 }
 
 void setup() {
@@ -131,53 +149,53 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     digitalWrite(LED_BUILTIN, LOW);
 
-    if (runningTimeMs % STATUS_CHECK_PERIOD_MS == 0) {
-      status = makeHTTPRequest(responseBody);
-      Serial.print("Response status code: ");
-      Serial.println(status);
+    status = makeHTTPGetRequest(URL, responseBody);
+    Serial.print("Response status code: ");
+    Serial.println(status);
 
-      if (status == -1) {
-        Serial.println("Restarting");
-        ESP.restart();
-      }
-      
-      Serial.print("Response body: ");
-      Serial.println(responseBody);
+    if (status == -1) {
+      Serial.println("Restarting");
+      ESP.restart();
     }
     
-    for (uint8 unitIndex = 0; unitIndex < UNITS_COUNT; unitIndex++) {
-      status = getOnOff(responseBody.c_str(), onOff, unitIndex * segmentsPerUnit);
-      status = getDuration(responseBody.c_str(), duration, unitIndex * segmentsPerUnit);
-      durationMs = duration.toInt();
-      Serial.print("Unit: ");
-      Serial.println(unitIndex + 1);
-      Serial.print("OnOff: ");
-      Serial.println(onOff);
-      Serial.print("Duration: ");
-      Serial.println(duration);
-      
-      if (unitOnDuration[unitIndex] == 0) {
-        Serial.print("Turning on GPIO ");
-        Serial.println(unitIndex);
-        digitalWrite(gpioByIndex(unitIndex), HIGH);
-      }
+    Serial.print("Response body: ");
+    Serial.println(responseBody);
+    
+    status = getUnitNum(responseBody.c_str(), unitNum);
+    status = getOnOff(responseBody.c_str(), onOff);
+    status = getDuration(responseBody.c_str(), duration);
+    unitNumber = unitNum.toInt();
+    durationMs = duration.toInt();
+    Serial.print("Unit: ");
+    Serial.println(unitNum);
+    Serial.print("OnOff: ");
+    Serial.println(onOff);
+    Serial.print("Duration: ");
+    Serial.println(duration);
 
-      if (unitOnDuration[unitIndex] < durationMs) {
-        unitOnDuration[unitIndex] = unitOnDuration[unitIndex] + LOOP_DELAY_MS;
-      }
-      else {
-        Serial.print("Turning off GPIO ");
-        Serial.println(unitIndex);
-        digitalWrite(gpioByIndex(unitIndex), LOW);
-        unitOnDuration[unitIndex] = 0;
-      }
+    String response;
+
+    if (onOff == "on") {
+      Serial.print("Turning on GPIO ");
+      Serial.println(unitNumber - 1);
+      digitalWrite(gpioByIndex(unitNumber - 1), HIGH);
+      makeHTTPPostRequest(URL_LOG, "{\"message\": \"Unit " + unitNum + " turned on\"}", response);
+      delay(durationMs);
+      Serial.print("Turning off GPIO ");
+      Serial.println(unitNumber - 1);
+      digitalWrite(gpioByIndex(unitNumber - 1), LOW);
+      makeHTTPPostRequest(URL_LOG, "{\"message\": \"Unit " + unitNum + " turned off\"}", response);
+    }
+    else if (onOff == "off") {
+      Serial.print("Turning off GPIO ");
+      Serial.println(unitNumber - 1);
+      digitalWrite(gpioByIndex(unitNumber - 1), LOW);
+      makeHTTPPostRequest(URL_LOG, "{\"message\": \"Unit " + unitNum + " turned off\"}", response);
     }
   }
   else {
     Serial.println("Disconnected");
   }
-
-  runningTimeMs = runningTimeMs + LOOP_DELAY_MS;
   
   delay(LOOP_DELAY_MS);
   
