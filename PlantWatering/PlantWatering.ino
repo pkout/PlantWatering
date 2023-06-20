@@ -12,10 +12,13 @@ WiFiClient client;
 HTTPClient http;
 int runningTimeMs;
 int unitOnDuration[UNITS_COUNT];
+String responseBody;
+String onOff, duration;
+int durationMs;
 
 void setupSerial() {
   Serial.begin(115200);
-  delay(10);
+  delay(1000);
   Serial.print("Connecting to ");
   Serial.println(SSID);
 }
@@ -38,7 +41,7 @@ void setupWifi() {
     
     delay(1000);
     Serial.print(".");
-    Serial.println(WiFi.status());
+    // Serial.println(WiFi.status());
   }
   
   Serial.println("");
@@ -102,6 +105,7 @@ void setup() {
 
   setupSerial();
   setupWifi();
+  delay(1000);
 }
 
 int gpioByIndex(int index) {
@@ -125,10 +129,6 @@ void loop() {
   int status = 0;
   
   if (WiFi.status() == WL_CONNECTED) {
-    String responseBody;
-    String onOff, duration;
-    int durationMs;
-
     digitalWrite(LED_BUILTIN, LOW);
 
     if (runningTimeMs % STATUS_CHECK_PERIOD_MS == 0) {
