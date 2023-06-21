@@ -118,6 +118,12 @@ int getDuration(const char *payload, String &duration) {
 void setup() {
   pinMode(D1, OUTPUT);
   pinMode(D2, OUTPUT);
+  pinMode(D3, OUTPUT);
+  pinMode(D4, OUTPUT);
+  digitalWrite(D1, LOW);
+  digitalWrite(D2, LOW);
+  digitalWrite(D3, LOW);
+  digitalWrite(D4, LOW);
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);  // LED off
 
@@ -177,18 +183,18 @@ void loop() {
 
     if (onOff == "on") {
       Serial.print("Turning on GPIO ");
-      Serial.println(unitNumber - 1);
+      Serial.println(unitNumber);
       digitalWrite(gpioByIndex(unitNumber - 1), HIGH);
       makeHTTPPostRequest(URL_LOG, "{\"message\": \"Unit " + unitNum + " turned on\"}", response);
       delay(durationMs);
       Serial.print("Turning off GPIO ");
-      Serial.println(unitNumber - 1);
+      Serial.println(unitNumber);
       digitalWrite(gpioByIndex(unitNumber - 1), LOW);
       makeHTTPPostRequest(URL_LOG, "{\"message\": \"Unit " + unitNum + " turned off\"}", response);
     }
     else if (onOff == "off") {
       Serial.print("Turning off GPIO ");
-      Serial.println(unitNumber - 1);
+      Serial.println(unitNumber);
       digitalWrite(gpioByIndex(unitNumber - 1), LOW);
       makeHTTPPostRequest(URL_LOG, "{\"message\": \"Unit " + unitNum + " turned off\"}", response);
     }
