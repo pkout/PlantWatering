@@ -1,12 +1,13 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
-#include <WiFiClientSecureBearSSL.h>
+// #include <WiFiClientSecureBearSSL.h>
 
 const char *SSID = "pela";
 const char *PASSWORD = "rockbed50";
-const char *URL = "http://jarvis.petrkout.com:4000/plants";
-const char *URL_LOG = "http://jarvis.petrkout.com:4000/plants/log";
-const int LOOP_DELAY_MS = 5000;
+const char *URL = "http://jarvis.petrkout.com:4000/plants/pumps";
+const char *URL_PUMP = "http://jarvis.petrkout.com:4000/plants/pumps/%d";
+const char *URL_LOG = "http://jarvis.petrkout.com:4000/plants/pumps/log";
+const int LOOP_DELAY_MS = 60*60*1000; // 1 hour
 WiFiClient client;
 HTTPClient http;
 int unitOnDuration;
@@ -22,6 +23,12 @@ void setupSerial() {
 }
 
 void setupWifi() {
+  IPAddress ip(192, 168, 50, 75);   
+  IPAddress gateway(192, 168, 50, 1);
+  IPAddress subnet(255, 255, 255, 0);
+  
+  // WiFi.config(ip, gateway, subnet);
+  // WiFi.hostname("plantwatering-esp");
   WiFi.mode(WIFI_STA);
   WiFi.begin(SSID, PASSWORD);
   bool ledOnOff = false;
@@ -120,13 +127,21 @@ void setup() {
   pinMode(D2, OUTPUT);
   pinMode(D3, OUTPUT);
   pinMode(D4, OUTPUT);
+  pinMode(D5, OUTPUT);
+  pinMode(D6, OUTPUT);
+  pinMode(D7, OUTPUT);
+  pinMode(D8, OUTPUT);
   digitalWrite(D1, LOW);
   digitalWrite(D2, LOW);
   digitalWrite(D3, LOW);
   digitalWrite(D4, LOW);
+  digitalWrite(D5, LOW);
+  digitalWrite(D6, LOW);
+  digitalWrite(D7, LOW);
+  digitalWrite(D8, LOW);
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);  // LED off
-
+  
   setupSerial();
   setupWifi();
   delay(1000);
@@ -139,9 +154,13 @@ int gpioByIndex(int index) {
     case 1:
       return D2;
     case 2:
-      return D3;
+      return D5;
     case 3:
-      return D4;
+      return D6;
+    case 4:
+      return D7;
+    case 5:
+      return D8;
   }
 
   return -1;
@@ -153,6 +172,9 @@ void loop() {
   int status = 0;
   
   if (WiFi.status() == WL_CONNECTED) {
+    String response;
+    
+    makeHTTPPostRequest(URL_LOG, "{\"message\": \"Heartbeat\"}", response);
     digitalWrite(LED_BUILTIN, LOW);
 
     status = makeHTTPGetRequest(URL, responseBody);
@@ -166,20 +188,23 @@ void loop() {
     
     Serial.print("Response body: ");
     Serial.println(responseBody);
+
+    if (responseBody == "") {
+      delay(LOOP_DELAY_MS);
+      return;
+    }
     
     status = getUnitNum(responseBody.c_str(), unitNum);
     status = getOnOff(responseBody.c_str(), onOff);
     status = getDuration(responseBody.c_str(), duration);
     unitNumber = unitNum.toInt();
-    durationMs = duration.toInt();
+    durationMs = duration.toInt() * 1000;
     Serial.print("Unit: ");
     Serial.println(unitNum);
     Serial.print("OnOff: ");
     Serial.println(onOff);
     Serial.print("Duration: ");
     Serial.println(duration);
-
-    String response;
 
     if (onOff == "on") {
       Serial.print("Turning on GPIO ");
@@ -190,6 +215,9 @@ void loop() {
       Serial.print("Turning off GPIO ");
       Serial.println(unitNumber);
       digitalWrite(gpioByIndex(unitNumber - 1), LOW);
+      char urlPump[200];
+      sprintf(urlPump, URL_PUMP, unitNumber);
+      makeHTTPPostRequest(urlPump, "{\"onOff\": \"off\"}", response);
       makeHTTPPostRequest(URL_LOG, "{\"message\": \"Unit " + unitNum + " turned off\"}", response);
     }
     else if (onOff == "off") {
